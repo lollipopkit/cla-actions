@@ -1,0 +1,52 @@
+name: CLA check
+description: Require a CLA signature from everyone who authored a commit in a pull request, and record signatures given as a comment.
+author: lollipopkit
+
+inputs:
+  document:
+    description: Path of the CLA in the calling repository, linked from the comment and the status.
+    default: CLA.md
+  translation:
+    description: Path of a Chinese translation of the CLA. Empty to link none.
+    default: CLA_zh.md
+  note:
+    description: Markdown appended after the link in the "please sign" comment, e.g. why the CLA exists.
+    default: ''
+  allowlist:
+    description: Logins that never need to sign, separated by commas or whitespace. Bots always pass.
+    default: ${{ github.repository_owner }}
+  signatures-branch:
+    description: Orphan branch holding the signature file.
+    default: cla-signatures
+  signatures-path:
+    description: Signature file on that branch. Bump the version directory when the CLA must be signed again.
+    default: signatures/v1/cla.json
+  github-token:
+    description: Token with contents, pull-requests and statuses write.
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        CLA_ACTION_PATH: ${{ github.action_path }}
+        CLA_DOCUMENT: ${{ inputs.document }}
+        CLA_TRANSLATION: ${{ inputs.translation }}
+        CLA_NOTE: ${{ inputs.note }}
+        CLA_ALLOWLIST: ${{ inputs.allowlist }}
+        CLA_BRANCH: ${{ inputs.signatures-branch }}
+        CLA_PATH: ${{ inputs.signatures-path }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const env = process.env
+          const { run } = require(`${env.CLA_ACTION_PATH}/src/check.js`)
+          await run({ github, context, core }, {
+            document: env.CLA_DOCUMENT,
+            translation: env.CLA_TRANSLATION,
+            note: env.CLA_NOTE,
+            allowlist: env.CLA_ALLOWLIST.split(/[\s,]+/).filter(Boolean),
+            branch: env.CLA_BRANCH,
+            path: env.CLA_PATH,
+          })
