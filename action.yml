@@ -22,7 +22,7 @@ inputs:
     description: Signature file on that branch. Bump the version directory when the CLA must be signed again.
     default: signatures/v1/cla.json
   github-token:
-    description: Token with contents, pull-requests and statuses write.
+    description: Token with contents, pull-requests and actions write.
     default: ${{ github.token }}
 
 runs:
@@ -49,4 +49,6 @@ runs:
             allowlist: env.CLA_ALLOWLIST.split(/[\s,]+/).filter(Boolean),
             branch: env.CLA_BRANCH,
             path: env.CLA_PATH,
+            // owner/repo/.github/workflows/<file>@<ref> -> <file>
+            workflow: env.GITHUB_WORKFLOW_REF.split('@')[0].split('/').pop(),
           })

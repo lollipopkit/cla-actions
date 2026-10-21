@@ -7,7 +7,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const { makeWorld, makeGithub, quiet, signatures } = require('./fake_github')
+const { makeWorld, makeGithub, makeCore, signatures } = require('./fake_github')
 
 const ROOT = path.join(__dirname, '..')
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
@@ -34,17 +34,18 @@ test('check action', async () => {
   const w = makeWorld()
   const alice = { login: 'Alice', id: 101, type: 'User' }
   const pr = { state: 'open', user: alice, number: 1, head: { sha: 'h' }, base: { repo: { default_branch: 'main' } } }
+  w.runs = [{ id: 3, workflow: 'cla.yml', event: 'pull_request_target', head_sha: 'h', status: 'completed' }]
   await withEnv({
+    GITHUB_WORKFLOW_REF: 'o/r/.github/workflows/cla.yml@refs/heads/main',
     CLA_ACTION_PATH: ROOT, CLA_DOCUMENT: 'CLA.md', CLA_TRANSLATION: '', CLA_NOTE: 'n',
     CLA_ALLOWLIST: 'lollipopkit, other', CLA_BRANCH: 'cla-signatures', CLA_PATH: 'signatures/v1/cla.json',
   }, () => script(path.join(ROOT, 'action.yml'))(
     makeGithub(w, pr, []),
-    { eventName: 'pull_request_target', payload: { pull_request: pr }, repo: { owner: 'o', repo: 'r' } },
-    quiet,
+    { eventName: 'issue_comment', payload: { issue: { number: 1 }, comment: { body: 'recheck', user: alice } }, repo: { owner: 'o', repo: 'r' } },
+    makeCore(),
     require,
   ))
-  assert.equal(w.statuses[0].state, 'failure')
-  assert.match(w.statuses[0].target_url, /\/o\/r\/blob\/main\/CLA\.md$/)
+  assert.deepEqual(w.reruns, [3])
 })
 
 test('record action', async () => {
@@ -54,7 +55,7 @@ test('record action', async () => {
     CLA_ACTION_PATH: path.join(ROOT, 'record'), CLA_LOGIN: 'alice', CLA_REFERENCE: 'https://github.com/o/r/issues/1',
     CLA_BRANCH: 'cla-signatures', CLA_PATH: 'signatures/v1/cla.json',
   }, () => script(path.join(ROOT, 'record', 'action.yml'))(
-    makeGithub(w), { actor: 'o', repo: { owner: 'o', repo: 'r' } }, quiet, require,
+    makeGithub(w), { actor: 'o', repo: { owner: 'o', repo: 'r' } }, makeCore(), require,
   ))
   assert.equal(signatures(w).signatures[0].id, 101)
 })

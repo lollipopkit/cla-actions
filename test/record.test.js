@@ -4,13 +4,13 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { run } = require('../src/record')
 const check = require('../src/check')
-const { makeWorld, makeGithub, quiet, signatures, STORE } = require('./fake_github')
+const { makeWorld, makeGithub, makeCore, signatures, STORE } = require('./fake_github')
 
 const context = { actor: 'lollipopkit', repo: { owner: 'lollipopkit', repo: 'demo' } }
 const REF = 'https://github.com/lollipopkit/demo/issues/1#issuecomment-1'
 
 const record = (world, login, reference = REF) =>
-  run({ github: makeGithub(world), context, core: quiet }, { login, reference, ...STORE })
+  run({ github: makeGithub(world), context, core: makeCore() }, { login, reference, ...STORE })
 
 test('records the account id, the reference and who recorded it', async () => {
   const w = makeWorld()
@@ -35,11 +35,12 @@ test('the check accepts a recorded signature', async () => {
   w.users.alice = alice
   await record(w, 'alice')
   const pr = { state: 'open', user: alice, number: 1, head: { sha: 'h' }, base: { repo: { default_branch: 'main' } } }
+  const core = makeCore()
   await check.run(
-    { github: makeGithub(w, pr, [{ author: alice, commit: { author: {} } }]), context: { eventName: 'pull_request_target', payload: { pull_request: pr }, repo: context.repo }, core: quiet },
-    { document: 'CLA.md', translation: '', note: '', allowlist: [], ...STORE },
+    { github: makeGithub(w, pr, [{ author: alice, commit: { author: {} } }]), context: { eventName: 'pull_request_target', payload: { pull_request: pr }, repo: context.repo }, core },
+    { document: 'CLA.md', translation: '', note: '', allowlist: [], workflow: 'cla.yml', ...STORE },
   )
-  assert.equal(w.statuses[0].state, 'success')
+  assert.deepEqual(core.failures, [])
 })
 
 test('rejects a reference outside github.com and an empty login', async () => {

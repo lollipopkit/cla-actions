@@ -7,7 +7,10 @@ actions only check and record signatures.
 - **Check** (`lollipopkit/cla-actions`): everyone who authored a commit, plus
   the pull request's opener, must have signed. A comment whose whole body is
   `I have read the CLA Document and I hereby sign the CLA` signs; `recheck`
-  runs again. Reports the `CLA` commit status — make that a required check.
+  runs again. The verdict is the job's own check run: make the job (`signatures`
+  below) a required check. A comment run is not attached to the head commit,
+  so after a signature or `recheck` it re-runs the latest `pull_request_target`
+  run, and the pull request shows a single check.
 - **Record** (`lollipopkit/cla-actions/record`): writes down a signature given
   elsewhere, such as an issue comment, by a maintainer.
 
@@ -32,9 +35,9 @@ on:
     types: [created]
 
 permissions:
-  contents: write
-  pull-requests: write
-  statuses: write
+  contents: write # the cla-signatures branch
+  pull-requests: write # the "please sign" comment
+  actions: write # re-run the check after a signature
 
 concurrency:
   # Never cancel: a cancelled run could drop a signature write.
@@ -42,10 +45,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  cla:
-    # Not named `CLA`: require the commit status, which a comment-triggered run
-    # also updates on the head commit.
-    name: Verify CLA signatures
+  signatures:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # Cheap pre-filter; the action checks the comment body strictly.
@@ -56,7 +56,7 @@ jobs:
         (contains(github.event.comment.body, 'I have read the CLA Document and I hereby sign the CLA') ||
          contains(github.event.comment.body, 'recheck'))))
     steps:
-      - uses: lollipopkit/cla-actions@<sha> # v1
+      - uses: lollipopkit/cla-actions@<sha> # v2
         with:
           note: You keep the copyright to what you wrote.
 ```
@@ -90,7 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: lollipopkit/cla-actions/record@<sha> # v1
+      - uses: lollipopkit/cla-actions/record@<sha> # v2
         with:
           login: ${{ inputs.login }}
           reference: ${{ inputs.reference }}
