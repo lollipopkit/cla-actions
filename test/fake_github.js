@@ -9,7 +9,8 @@ function makeWorld() {
     objects: {}, // sha -> { type, data }
     users: {}, // login -> user
     comments: [],
-    statuses: [],
+    runs: [], // pull_request_target runs of the workflow, newest first
+    reruns: [],
     nextSha: 1,
     nextCommentId: 1,
   }
@@ -22,6 +23,15 @@ function makeGithub(world, pr = null, commits = []) {
   return {
     paginate: async (fn, params) => (await fn(params)).data,
     rest: {
+      actions: {
+        listWorkflowRuns: async ({ workflow_id, event, head_sha }) => {
+          const runs = world.runs.filter((r) => r.workflow === workflow_id && r.event === event && r.head_sha === head_sha)
+          const run = runs[0]
+          if (run && run.status !== 'completed') run.status = 'completed' // finishes while polled
+          return { data: { workflow_runs: runs } }
+        },
+        reRunWorkflow: async ({ run_id }) => { world.reruns.push(run_id); return { data: {} } },
+      },
       users: {
         getByUsername: async ({ username }) => {
           const user = world.users[username.toLowerCase()]
@@ -55,7 +65,6 @@ function makeGithub(world, pr = null, commits = []) {
             data: { content: Buffer.from(world.objects[entry.sha].data, 'utf8').toString('base64') },
           }
         },
-        createCommitStatus: async (p) => { world.statuses.push(p); return { data: {} } },
       },
       git: {
         getRef: async ({ ref }) => {
@@ -89,7 +98,13 @@ function makeGithub(world, pr = null, commits = []) {
   }
 }
 
-const quiet = { info: () => {}, setFailed: () => {}, summary: { addRaw() { return this }, write: async () => {} } }
+// Records what the job concluded: `failures` holds every setFailed message.
+const makeCore = () => ({
+  failures: [],
+  info() {},
+  setFailed(m) { this.failures.push(m) },
+  summary: { addRaw() { return this }, write: async () => {} },
+})
 
 const signatures = (world, branch = 'cla-signatures') => {
   const head = world.refs[`heads/${branch}`]
@@ -100,4 +115,4 @@ const signatures = (world, branch = 'cla-signatures') => {
 
 const STORE = { branch: 'cla-signatures', path: 'signatures/v1/cla.json' }
 
-module.exports = { makeWorld, makeGithub, quiet, signatures, STORE }
+module.exports = { makeWorld, makeGithub, makeCore, signatures, STORE }

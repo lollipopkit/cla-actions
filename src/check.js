@@ -4,7 +4,6 @@ const { createStore } = require('./store')
 
 const SIGN_RE = /^i have read the cla document and i hereby sign the cla\.?$/i
 const RECHECK_RE = /^recheck\.?$/i
-const STATUS_CONTEXT = 'CLA'
 const MARKER = '<!-- cla-check -->'
 // GitHub's own committer identity, for commits made in the web UI.
 const ALWAYS_ALLOWED = ['web-flow']
@@ -19,6 +18,10 @@ const AGENT_IDS = new Set([
 
 // Checks that everyone who authored a commit in a pull request has signed, and
 // records a signature given as a comment on it.
+//
+// The verdict is the job's own check run on `pull_request_target`. A comment
+// run is not attached to the head commit, so after a signature or `recheck` it
+// re-runs that check instead of reporting anything itself.
 //
 // Runs on `pull_request_target` / `issue_comment`, holding a write token while a
 // fork's pull request is in play: everything goes through the GitHub API, and
@@ -106,6 +109,8 @@ async function run({ github, context, core }, opts) {
     }
   }
 
+  if (isComment) return rerunCheck({ github, core, owner, repo, headSha, opts })
+
   const pending = [...required.values()].filter((u) => !hasSigned(u))
   const ok = pending.length === 0 && unlinked.size === 0
 
@@ -168,23 +173,30 @@ async function run({ github, context, core }, opts) {
     await upsertComment(lines.join('\n'), true)
   }
 
-  const description = ok
-    ? 'All contributors have signed the CLA'
-    : (pending.length
-        ? `Not signed by: ${pending.map((u) => u.login).join(', ')}`
-        : 'Some commits have an unrecognised author'
-      ).slice(0, 140)
+  if (!ok) {
+    core.setFailed(pending.length
+      ? `Not signed by: ${pending.map((u) => u.login).join(', ')}`
+      : 'Some commits have an unrecognised author')
+  }
+}
 
-  await github.rest.repos.createCommitStatus({
-    owner, repo,
-    sha: headSha,
-    state: ok ? 'success' : 'failure',
-    context: STATUS_CONTEXT,
-    description,
-    target_url: claUrl,
-  })
-
-  if (!ok) core.setFailed(description)
+// Re-runs the latest `pull_request_target` run of this workflow for the head
+// commit. One still in progress may have read the signatures before this run
+// wrote them, so wait for it rather than trust it.
+async function rerunCheck({ github, core, owner, repo, headSha, opts }) {
+  for (let i = 0; i < 12; i++) {
+    const { data } = await github.rest.actions.listWorkflowRuns({
+      owner, repo, workflow_id: opts.workflow, event: 'pull_request_target', head_sha: headSha, per_page: 1,
+    })
+    const latest = data.workflow_runs[0]
+    if (!latest) return core.setFailed('No CLA check ran on the head commit; push a commit to start one.')
+    if (latest.status === 'completed') {
+      await github.rest.actions.reRunWorkflow({ owner, repo, run_id: latest.id })
+      return core.info(`Re-ran ${latest.html_url}`)
+    }
+    await new Promise((r) => setTimeout(r, opts.pollMs ?? 10000))
+  }
+  core.setFailed('The CLA check is still running; comment `recheck` once it finishes.')
 }
 
 module.exports = { run }
