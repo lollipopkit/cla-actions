@@ -109,5 +109,5 @@ action by commit SHA.
 
 ## Development
 
-`node --test test/` runs both actions against an in-memory GitHub API,
+`node --test` runs both actions against an in-memory GitHub API,
 including the `script:` wiring in each `action.yml`.
