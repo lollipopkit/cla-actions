@@ -181,8 +181,9 @@ async function run({ github, context, core }, opts) {
 }
 
 // Re-runs the latest `pull_request_target` run of this workflow for the head
-// commit. One still in progress may have read the signatures before this run
-// wrote them, so wait for it rather than trust it.
+// commit. One still queued (behind this run, when they share a concurrency
+// group) reads the signatures once it starts; one in progress may have read
+// them before this run wrote them, so wait for it rather than trust it.
 async function rerunCheck({ github, core, owner, repo, headSha, opts }) {
   for (let i = 0; i < 12; i++) {
     const { data } = await github.rest.actions.listWorkflowRuns({
@@ -190,6 +191,9 @@ async function rerunCheck({ github, core, owner, repo, headSha, opts }) {
     })
     const latest = data.workflow_runs[0]
     if (!latest) return core.setFailed('No CLA check ran on the head commit; push a commit to start one.')
+    if (['queued', 'pending', 'waiting', 'requested'].includes(latest.status)) {
+      return core.info(`${latest.html_url} has not started; it will see the signatures.`)
+    }
     if (latest.status === 'completed') {
       await github.rest.actions.reRunWorkflow({ owner, repo, run_id: latest.id })
       return core.info(`Re-ran ${latest.html_url}`)

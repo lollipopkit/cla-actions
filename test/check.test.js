@@ -155,6 +155,14 @@ test('recheck re-runs the latest check, waiting for one in progress', async () =
   assert.deepEqual(w.reruns, [8])
 })
 
+test('recheck leaves a queued check alone', async () => {
+  const w = makeWorld()
+  const pr = openPr(alice, 17)
+  w.runs = [{ id: 4, workflow: 'cla.yml', event: 'pull_request_target', head_sha: pr.head.sha, status: 'queued' }]
+  const core = await onComment(w, pr, [commitBy(alice)], 'recheck', bob)
+  assert.deepEqual([w.reruns, core.failures], [[], []])
+})
+
 test('recheck with no check on the head commit fails', async () => {
   const core = await onComment(makeWorld(), openPr(alice, 16), [commitBy(alice)], 'recheck', bob)
   assert.match(core.failures[0], /push a commit/)

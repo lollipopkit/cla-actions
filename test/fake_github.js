@@ -27,7 +27,7 @@ function makeGithub(world, pr = null, commits = []) {
         listWorkflowRuns: async ({ workflow_id, event, head_sha }) => {
           const runs = world.runs.filter((r) => r.workflow === workflow_id && r.event === event && r.head_sha === head_sha)
           const run = runs[0]
-          if (run && run.status !== 'completed') run.status = 'completed' // finishes while polled
+          if (run && run.status === 'in_progress') run.status = 'completed' // finishes while polled
           return { data: { workflow_runs: runs } }
         },
         reRunWorkflow: async ({ run_id }) => { world.reruns.push(run_id); return { data: {} } },
